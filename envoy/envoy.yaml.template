@@ -1,0 +1,80 @@
+
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: thumbor
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: thumbor
+                http_filters:
+                  - name: envoy.filters.http.jwt_authn
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                      providers:
+                        sso:
+                          issuer: "${JWT_ISSUER}"
+                          forward: true
+                          remote_jwks:
+                            http_uri:
+                              uri: "${JWKS_URI}"
+                              cluster: jwks
+                              timeout: 5s
+                            cache_duration:
+                              seconds: 300
+                      rules:
+                        - match:
+                            prefix: "/"
+                          requires:
+                            provider_name: "sso"
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: thumbor
+      connect_timeout: 1s
+      type: logical_dns
+      lb_policy: round_robin
+      load_assignment:
+        cluster_name: thumbor
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: thumbor
+                      port_value: 8000
+
+    - name: jwks
+      connect_timeout: 1s
+      type: logical_dns
+      lb_policy: round_robin
+      load_assignment:
+        cluster_name: jwks
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ${JWKS_HOST}
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext

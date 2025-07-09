@@ -1,0 +1,25 @@
+
+version: '3.9'
+
+services:
+  thumbor:
+    image: apsl/thumbor
+    volumes:
+      - ./images:/data/images:ro
+    environment:
+      - LOADER=thumbor.loaders.file_loader
+      - FILE_LOADER_ROOT_PATH=/data/images
+      - ALLOW_UNSAFE_URL=True
+      - SECURITY_KEY=MY_SECRET_KEY
+
+  envoy:
+    build:
+      context: ./envoy
+    ports:
+      - "8080:8080"
+    depends_on:
+      - thumbor
+    environment:
+      - JWT_ISSUER=${JWT_ISSUER}
+      - JWKS_URI=${JWKS_URI}
+      - JWKS_HOST=${JWKS_HOST}
